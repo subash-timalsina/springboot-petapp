@@ -293,6 +293,154 @@ Privileged Role Administrator or Owner.
 
 
 
+*****************************************************
+*************************************************************
+************************************************************************
+
+Ah, I see! You're asking about Azure PIM for Azure resources (subscriptions), specifically to provision the Owner role at the subscription level using just-in-time (JIT) access via Azure Privileged Identity Management (PIM).
+
+Let me clarify the solution, ensuring that it uses Azure PIM for Azure subscriptions, not direct role assignments.
+
+✅ Solution: Azure PIM for Azure Resources (Subscriptions)
+
+When managing PIM for Azure subscriptions, there are two main steps:
+
+Assign the user as Eligible for the Owner role at the subscription level using the PIM APIs.
+Activate the Owner role in the subscription when the user requests access.
+Here’s how to automate both processes using Azure REST APIs with your external API and Azure Function.
+
+🔗 Step 1: Assign the User as Eligible in Azure PIM for the Subscription
+
+To assign a user as Eligible for the Owner role at the subscription level, use the following API:
+
+API Endpoint:
+POST https://management.azure.com/providers/Microsoft.Authorization/roleAssignmentScheduleRequests?api-version=2022-04-01
+Request Payload Example:
+{
+  "properties": {
+    "principalId": "<userObjectId>",
+    "roleDefinitionId": "/subscriptions/<subscriptionId>/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
+    "scope": "/subscriptions/<subscriptionId>",
+    "justification": "Change request CR12345",
+    "requestType": "SelfAssign",
+    "condition": "None",
+    "conditionVersion": "1.0"
+  }
+}
+🔄 Step 2: Activate the Owner Role in PIM
+
+Once the user is made Eligible, they can activate the Owner role in PIM when they need access.
+
+API Endpoint:
+POST https://management.azure.com/providers/Microsoft.Authorization/roleEligibilityScheduleRequests/{requestId}/activate?api-version=2022-04-01
+Request Payload Example:
+{
+  "properties": {
+    "justification": "Change request CR12345",
+    "ticketInfo": {
+      "ticketNumber": "CR12345",
+      "ticketSystem": "External API"
+    }
+  }
+}
+🖥 Azure Function Code (Python) for Azure PIM Automation
+
+Here’s a complete Azure Function that:
+
+Assigns the user as Eligible for the Owner role at the subscription level.
+Activates the Owner role using PIM APIs.
+Azure Function Code:
+import logging
+import requests
+from azure.identity import DefaultAzureCredential
+from azure.functions import HttpRequest, HttpResponse
+
+def main(req: HttpRequest) -> HttpResponse:
+    logging.info("Processing PIM Owner Role Request...")
+
+    try:
+        req_body = req.get_json()
+        user_object_id = req_body['userObjectId']
+        subscription_id = req_body['subscriptionId']
+        justification = req_body['justification']
+        change_request_id = req_body['changeRequestId']
+    except ValueError as e:
+        return HttpResponse(f"Invalid request body: {e}", status_code=400)
+
+    # Authenticate using Azure Managed Identity
+    credential = DefaultAzureCredential()
+    token = credential.get_token("https://management.azure.com/.default")
+    headers = {
+        "Authorization": f"Bearer {token.token}",
+        "Content-Type": "application/json"
+    }
+
+    # Assign the user as Eligible for the Owner role in PIM
+    pim_assignment_url = "https://management.azure.com/providers/Microsoft.Authorization/roleAssignmentScheduleRequests?api-version=2022-04-01"
+    assignment_payload = {
+        "properties": {
+            "principalId": user_object_id,
+            "roleDefinitionId": f"/subscriptions/{subscription_id}/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
+            "scope": f"/subscriptions/{subscription_id}",
+            "justification": justification,
+            "requestType": "SelfAssign",
+            "condition": "None",
+            "conditionVersion": "1.0"
+        }
+    }
+
+    assignment_response = requests.post(pim_assignment_url, json=assignment_payload, headers=headers)
+    if assignment_response.status_code != 201:
+        return HttpResponse(f"Failed to assign eligibility: {assignment_response.text}", status_code=assignment_response.status_code)
+
+    # Activate the Owner role in PIM
+    request_id = assignment_response.json()['id']
+    pim_activation_url = f"https://management.azure.com/providers/Microsoft.Authorization/roleEligibilityScheduleRequests/{request_id}/activate?api-version=2022-04-01"
+    activation_payload = {
+        "properties": {
+            "justification": justification,
+            "ticketInfo": {
+                "ticketNumber": change_request_id,
+                "ticketSystem": "External API"
+            }
+        }
+    }
+
+    activation_response = requests.post(pim_activation_url, json=activation_payload, headers=headers)
+    if activation_response.status_code != 200:
+        return HttpResponse(f"Failed to activate role: {activation_response.text}", status_code=activation_response.status_code)
+
+    return HttpResponse("Owner role successfully provisioned and activated in PIM.", status_code=200)
+🔐 Permissions Required for the Azure Function's Managed Identity:
+
+Privileged Role Administrator in Azure AD.
+Owner role on the subscription level for each of the 20 subscriptions.
+🧩 Solution Flow Recap:
+
+Step	API Call	Description
+Eligibility Assignment	POST /roleAssignmentScheduleRequests	Assign the user as Eligible for the Owner role.
+Activation	POST /roleEligibilityScheduleRequests/{requestId}/activate	Activate the Owner role with a justification.
+Would you like a deployment guide or a Bicep template to automate the entire setup? 😊
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
