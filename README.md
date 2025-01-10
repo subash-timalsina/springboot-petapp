@@ -218,3 +218,81 @@ Would you like me to adjust the Azure Function code to handle both assignment an
 
 
 
+
+
+Since you need to provision the Owner role at the subscription level across multiple Azure subscriptions, here's the approach to automate this process effectively.
+
+✅ Solution Breakdown for Subscription-Level Role Provisioning
+
+Process Flow:
+User picks the subscription and submits the request (via your external API).
+Azure Function processes the request:
+Validates the request details.
+Assigns the Owner role at the subscription level.
+Activates the role in PIM if the subscription is PIM-enabled.
+🚀 Updated Azure Function Code
+Here’s an updated Azure Function in Python to handle Owner role provisioning across any of the 20 subscriptions.
+
+Azure Function Code:
+
+import logging
+import requests
+from azure.identity import DefaultAzureCredential
+from azure.functions import HttpRequest, HttpResponse
+
+def main(req: HttpRequest) -> HttpResponse:
+    logging.info("Processing Owner Role Provisioning Request...")
+
+    try:
+        req_body = req.get_json()
+        user_object_id = req_body['userObjectId']
+        subscription_id = req_body['subscriptionId']
+        justification = req_body['justification']
+    except ValueError as e:
+        return HttpResponse(f"Invalid request body: {e}", status_code=400)
+
+    # Set the role definition for Owner
+    role_definition_id = f"/subscriptions/{subscription_id}/providers/Microsoft.Authorization/roleDefinitions/{OWNER_ROLE_ID}"
+
+    # Authenticate using Azure Managed Identity
+    credential = DefaultAzureCredential()
+    token = credential.get_token("https://management.azure.com/.default")
+    headers = {
+        "Authorization": f"Bearer {token.token}",
+        "Content-Type": "application/json"
+    }
+
+    # Create the role assignment
+    role_assignment_url = f"https://management.azure.com/subscriptions/{subscription_id}/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01"
+    role_assignment_payload = {
+        "properties": {
+            "roleDefinitionId": role_definition_id,
+            "principalId": user_object_id,
+            "principalType": "User"
+        }
+    }
+
+    response = requests.put(role_assignment_url, json=role_assignment_payload, headers=headers)
+
+    if response.status_code == 201:
+        logging.info("Role assigned successfully.")
+        return HttpResponse("Owner role provisioned successfully.", status_code=201)
+    else:
+        logging.error(f"Failed to assign role: {response.text}")
+        return HttpResponse(f"Failed to assign role: {response.text}", status_code=response.status_code)
+🔧 Adjustments Based on Your Requirements:
+Subscription Selection: The user will specify the subscription ID they want to access.
+Owner Role Definition ID: The Owner role definition ID is the same across all subscriptions:
+OWNER_ROLE_ID = "8e3af657-a8ff-443c-a75c-2fe8c4bcb635"
+🔐 Security Considerations:
+Use Managed Identity for the Azure Function to authenticate.
+Ensure the Managed Identity has the following permissions across all 20 subscriptions:
+Privileged Role Administrator or Owner.
+
+
+
+
+
+
+
+
